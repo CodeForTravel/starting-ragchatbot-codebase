@@ -51,8 +51,10 @@ def make_response(text=None, calls=None):
 @pytest.fixture
 def fake_client_factory():
     """Returns a function building a fake genai client with scripted responses."""
+
     def build(responses):
         client = MagicMock()
         client.models.generate_content.side_effect = list(responses)
         return client
+
     return build
