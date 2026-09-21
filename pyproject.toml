@@ -18,3 +18,11 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+addopts = "-ra --strict-markers"
+markers = [
+    "api: FastAPI endpoint tests (no real RAG system or static files)",
+]
