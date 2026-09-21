@@ -18,9 +18,28 @@ document.addEventListener('DOMContentLoaded', () => {
     newChatButton = document.getElementById('newChatButton');
 
     setupEventListeners();
+    setupThemeToggle();
     createNewSession();
     loadCourseStats();
 });
+
+// Theme toggle
+function setupThemeToggle() {
+    const button = document.getElementById('themeToggle');
+    const root = document.documentElement;
+    const isLight = () => root.getAttribute('data-theme') === 'light';
+    const sync = () => button.setAttribute('aria-pressed', String(isLight()));
+    sync();
+
+    button.addEventListener('click', () => {
+        const next = isLight() ? 'dark' : 'light';
+        root.classList.add('theme-transition');
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem('theme', next); } catch (e) {}
+        sync();
+        setTimeout(() => root.classList.remove('theme-transition'), 350);
+    });
+}
 
 // Event Listeners
 function setupEventListeners() {
