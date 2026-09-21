@@ -7,7 +7,9 @@ pytestmark = pytest.mark.api
 
 
 class TestQueryEndpoint:
-    def test_query_without_session_creates_one(self, client, mock_rag_system, sample_sources):
+    def test_query_without_session_creates_one(
+        self, client, mock_rag_system, sample_sources
+    ):
         r = client.post("/api/query", json={"query": "What is a widget?"})
         assert r.status_code == 200
         assert r.json() == {
@@ -34,7 +36,9 @@ class TestQueryEndpoint:
         mock_rag_system.query.return_value = ("General answer", [])
         assert client.post("/api/query", json={"query": "q"}).json()["sources"] == []
 
-    @pytest.mark.parametrize("body", [{}, {"session_id": "abc"}, {"query": 123}, {"query": None}])
+    @pytest.mark.parametrize(
+        "body", [{}, {"session_id": "abc"}, {"query": 123}, {"query": None}]
+    )
     def test_query_invalid_body_is_422(self, client, body):
         assert client.post("/api/query", json=body).status_code == 422
 
@@ -55,11 +59,20 @@ class TestCoursesEndpoint:
     def test_returns_stats(self, client):
         r = client.get("/api/courses")
         assert r.status_code == 200
-        assert r.json() == {"total_courses": 1, "course_titles": ["Test Course on Widgets"]}
+        assert r.json() == {
+            "total_courses": 1,
+            "course_titles": ["Test Course on Widgets"],
+        }
 
     def test_no_courses(self, client, mock_rag_system):
-        mock_rag_system.get_course_analytics.return_value = {"total_courses": 0, "course_titles": []}
-        assert client.get("/api/courses").json() == {"total_courses": 0, "course_titles": []}
+        mock_rag_system.get_course_analytics.return_value = {
+            "total_courses": 0,
+            "course_titles": [],
+        }
+        assert client.get("/api/courses").json() == {
+            "total_courses": 0,
+            "course_titles": [],
+        }
 
     def test_failure_is_500(self, client, mock_rag_system):
         mock_rag_system.get_course_analytics.side_effect = RuntimeError("db down")
@@ -103,10 +116,12 @@ def test_endpoints_with_real_rag_system(test_config, docs_dir, fake_client_facto
     with patch("ai_generator.genai.Client"):
         rag = RAGSystem(test_config)
     rag.add_course_folder(docs_dir)
-    rag.ai_generator.client = fake_client_factory([
-        make_response(calls=[("search_course_content", {"query": "widget"})]),
-        make_response(text="A widget is a component."),
-    ])
+    rag.ai_generator.client = fake_client_factory(
+        [
+            make_response(calls=[("search_course_content", {"query": "widget"})]),
+            make_response(text="A widget is a component."),
+        ]
+    )
     c = TestClient(build_test_app(rag))
 
     assert c.get("/api/courses").json()["course_titles"] == ["Test Course on Widgets"]

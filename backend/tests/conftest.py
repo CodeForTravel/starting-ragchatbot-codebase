@@ -107,7 +107,9 @@ def build_test_app(rag_system) -> FastAPI:
     @app.post("/api/query", response_model=QueryResponse)
     async def query_documents(request: QueryRequest):
         try:
-            session_id = request.session_id or rag_system.session_manager.create_session()
+            session_id = (
+                request.session_id or rag_system.session_manager.create_session()
+            )
             answer, sources = rag_system.query(request.query, session_id)
             return QueryResponse(answer=answer, sources=sources, session_id=session_id)
         except Exception as e:
@@ -142,7 +144,12 @@ def build_test_app(rag_system) -> FastAPI:
 
 @pytest.fixture
 def sample_sources():
-    return [{"text": "Test Course on Widgets - Lesson 1", "url": "https://example.com/widgets/1"}]
+    return [
+        {
+            "text": "Test Course on Widgets - Lesson 1",
+            "url": "https://example.com/widgets/1",
+        }
+    ]
 
 
 @pytest.fixture
