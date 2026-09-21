@@ -2,9 +2,10 @@ from google import genai
 from google.genai import types
 from typing import List, Optional, Dict, Any
 
+
 class AIGenerator:
     """Handles interactions with Google's Gemini API for generating responses"""
-    
+
     # Static system prompt to avoid rebuilding on each call
     SYSTEM_PROMPT = """ You are an AI assistant specialized in course materials and educational content with access to two tools for course information: `search_course_content` and `get_course_outline`.
 
@@ -38,15 +39,19 @@ All responses must be:
 4. **Example-supported** - Include relevant examples when they aid understanding
 Provide only the direct answer to what was asked.
 """
-    
+
     MAX_ROUNDS = 2  # max sequential tool rounds per query
 
     def __init__(self, api_key: str, model: str):
         self.client = genai.Client(api_key=api_key)
         self.model = model
 
-    def _build_config(self, system_content: str, tools: Optional[List] = None,
-                      allow_calls: bool = True) -> types.GenerateContentConfig:
+    def _build_config(
+        self,
+        system_content: str,
+        tools: Optional[List] = None,
+        allow_calls: bool = True,
+    ) -> types.GenerateContentConfig:
         """Build generation config; tool calls are executed by us, not automatically by the SDK.
 
         allow_calls=False keeps the tools declared (the history contains function calls)
@@ -58,15 +63,21 @@ Provide only the direct answer to what was asked.
             max_output_tokens=800,
         )
         if tools:
-            config.tools = [types.Tool(function_declarations=[
-                types.FunctionDeclaration(
-                    name=t["name"],
-                    description=t["description"],
-                    parameters_json_schema=t["input_schema"],
+            config.tools = [
+                types.Tool(
+                    function_declarations=[
+                        types.FunctionDeclaration(
+                            name=t["name"],
+                            description=t["description"],
+                            parameters_json_schema=t["input_schema"],
+                        )
+                        for t in tools
+                    ]
                 )
-                for t in tools
-            ])]
-            config.automatic_function_calling = types.AutomaticFunctionCallingConfig(disable=True)
+            ]
+            config.automatic_function_calling = types.AutomaticFunctionCallingConfig(
+                disable=True
+            )
             if not allow_calls:
                 config.tool_config = types.ToolConfig(
                     function_calling_config=types.FunctionCallingConfig(mode="NONE")
@@ -81,10 +92,13 @@ Provide only the direct answer to what was asked.
             config=config,
         )
 
-    def generate_response(self, query: str,
-                         conversation_history: Optional[str] = None,
-                         tools: Optional[List] = None,
-                         tool_manager=None) -> str:
+    def generate_response(
+        self,
+        query: str,
+        conversation_history: Optional[str] = None,
+        tools: Optional[List] = None,
+        tool_manager=None,
+    ) -> str:
         """
         Generate AI response with optional tool usage and conversation context.
 
@@ -109,7 +123,9 @@ Provide only the direct answer to what was asked.
             else self.SYSTEM_PROMPT
         )
 
-        contents = [types.Content(role="user", parts=[types.Part.from_text(text=query)])]
+        contents = [
+            types.Content(role="user", parts=[types.Part.from_text(text=query)])
+        ]
         config = self._build_config(system_content, tools)
         response = self._generate(contents, config)
 
@@ -118,7 +134,9 @@ Provide only the direct answer to what was asked.
             rounds += 1
             # Keep the model's function-call turn as-is (preserves any thought signatures)
             contents.append(response.candidates[0].content)
-            result_parts, failed = self._execute_calls(response.function_calls, tool_manager)
+            result_parts, failed = self._execute_calls(
+                response.function_calls, tool_manager
+            )
             contents.append(types.Content(role="user", parts=result_parts))
 
             if failed or rounds >= self.MAX_ROUNDS:
@@ -127,7 +145,9 @@ Provide only the direct answer to what was asked.
 
         if response.text or rounds == 0:
             return response.text or ""
-        return self._final_text(contents, system_content, tools)  # model went silent after a tool round
+        return self._final_text(
+            contents, system_content, tools
+        )  # model went silent after a tool round
 
     def _execute_calls(self, function_calls: List, tool_manager):
         """Run every call of one round; returns (function_response parts, whether any tool raised).
@@ -138,14 +158,20 @@ Provide only the direct answer to what was asked.
         failed = False
         for call in function_calls:
             try:
-                result = {"result": tool_manager.execute_tool(call.name, **(call.args or {}))}
+                result = {
+                    "result": tool_manager.execute_tool(call.name, **(call.args or {}))
+                }
             except Exception as e:
                 failed = True
                 result = {"error": f"Tool '{call.name}' failed: {e}"}
-            parts.append(types.Part.from_function_response(name=call.name, response=result))
+            parts.append(
+                types.Part.from_function_response(name=call.name, response=result)
+            )
         return parts, failed
 
-    def _final_text(self, contents: List, system_content: str, tools: Optional[List]) -> str:
+    def _final_text(
+        self, contents: List, system_content: str, tools: Optional[List]
+    ) -> str:
         """Final request: tools stay declared but calling is disabled, so the model must answer in text."""
         final_config = self._build_config(system_content, tools, allow_calls=False)
         for _ in range(2):  # retry once if the model returns no text

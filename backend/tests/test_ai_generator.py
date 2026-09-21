@@ -1,4 +1,5 @@
 """External-behavior tests: API requests made, tools executed, text returned."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -21,6 +22,7 @@ def gen(fake_client_factory):
         with patch("ai_generator.genai.Client") as C:
             C.return_value = fake_client_factory(responses)
             return AIGenerator("k", "some-model")
+
     return build
 
 
@@ -37,7 +39,10 @@ def requests_of(g):
 
 def is_text_only(call):
     cfg = call.kwargs["config"]
-    return cfg.tool_config is not None and cfg.tool_config.function_calling_config.mode == "NONE"
+    return (
+        cfg.tool_config is not None
+        and cfg.tool_config.function_calling_config.mode == "NONE"
+    )
 
 
 def roles(call):
@@ -45,8 +50,12 @@ def roles(call):
 
 
 def response_parts(call):
-    return [p.function_response for c in call.kwargs["contents"] for p in c.parts
-            if getattr(p, "function_response", None)]
+    return [
+        p.function_response
+        for c in call.kwargs["contents"]
+        for p in c.parts
+        if getattr(p, "function_response", None)
+    ]
 
 
 def test_build_config_valid_with_real_sdk():
@@ -64,8 +73,12 @@ def test_no_tool_call_single_request(gen, tm):
 
 
 def test_one_tool_round_then_answer(gen, tm):
-    g = gen([make_response(calls=[(SEARCH, {"query": "w", "course_name": "W"})]),
-             make_response(text="final answer")])
+    g = gen(
+        [
+            make_response(calls=[(SEARCH, {"query": "w", "course_name": "W"})]),
+            make_response(text="final answer"),
+        ]
+    )
     assert g.generate_response("Q", tools=TOOLS, tool_manager=tm) == "final answer"
     tm.execute_tool.assert_called_once_with(SEARCH, query="w", course_name="W")
     reqs = requests_of(g)
@@ -77,13 +90,20 @@ def test_one_tool_round_then_answer(gen, tm):
 
 def test_two_sequential_rounds_preserve_context(gen, tm):
     tm.execute_tool.side_effect = ["Lesson 4: Servers", "Other course info"]
-    g = gen([make_response(calls=[(OUTLINE, {"course_name": "X"})]),
-             make_response(calls=[(SEARCH, {"query": "Servers"})]),
-             make_response(text="complete answer")])
+    g = gen(
+        [
+            make_response(calls=[(OUTLINE, {"course_name": "X"})]),
+            make_response(calls=[(SEARCH, {"query": "Servers"})]),
+            make_response(text="complete answer"),
+        ]
+    )
     assert g.generate_response("Q", tools=TOOLS, tool_manager=tm) == "complete answer"
 
     assert [c.args for c in tm.execute_tool.call_args_list] == [(OUTLINE,), (SEARCH,)]
-    assert [c.kwargs for c in tm.execute_tool.call_args_list] == [{"course_name": "X"}, {"query": "Servers"}]
+    assert [c.kwargs for c in tm.execute_tool.call_args_list] == [
+        {"course_name": "X"},
+        {"query": "Servers"},
+    ]
     reqs = requests_of(g)
     assert len(reqs) == 3
     assert [is_text_only(r) for r in reqs] == [False, False, True]
@@ -95,9 +115,13 @@ def test_two_sequential_rounds_preserve_context(gen, tm):
 
 
 def test_cap_of_two_rounds(gen, tm):
-    g = gen([make_response(calls=[(SEARCH, {"query": "a"})]),
-             make_response(calls=[(SEARCH, {"query": "b"})]),
-             make_response(calls=[(SEARCH, {"query": "c"})], text="best effort")])
+    g = gen(
+        [
+            make_response(calls=[(SEARCH, {"query": "a"})]),
+            make_response(calls=[(SEARCH, {"query": "b"})]),
+            make_response(calls=[(SEARCH, {"query": "c"})], text="best effort"),
+        ]
+    )
     out = g.generate_response("Q", tools=TOOLS, tool_manager=tm)
     assert out == "best effort"  # text of the forced final request; its call is ignored
     assert tm.execute_tool.call_count == 2
@@ -106,20 +130,30 @@ def test_cap_of_two_rounds(gen, tm):
 
 
 def test_parallel_calls_are_one_round(gen, tm):
-    g = gen([make_response(calls=[(SEARCH, {"query": "a"}), (SEARCH, {"query": "b"})]),
-             make_response(calls=[(OUTLINE, {"course_name": "X"})]),
-             make_response(text="done")])
+    g = gen(
+        [
+            make_response(calls=[(SEARCH, {"query": "a"}), (SEARCH, {"query": "b"})]),
+            make_response(calls=[(OUTLINE, {"course_name": "X"})]),
+            make_response(text="done"),
+        ]
+    )
     assert g.generate_response("Q", tools=TOOLS, tool_manager=tm) == "done"
     assert tm.execute_tool.call_count == 3  # a second round was still allowed
     reqs = requests_of(g)
     assert len(response_parts(reqs[1])) == 2
-    assert len(reqs[1].kwargs["contents"][-1].parts) == 2  # both results in a single user turn
+    assert (
+        len(reqs[1].kwargs["contents"][-1].parts) == 2
+    )  # both results in a single user turn
 
 
 def test_tool_exception_ends_loop_gracefully(gen, tm):
     tm.execute_tool.side_effect = RuntimeError("db down")
-    g = gen([make_response(calls=[(SEARCH, {"query": "a"})]),
-             make_response(text="Sorry, search is unavailable.")])
+    g = gen(
+        [
+            make_response(calls=[(SEARCH, {"query": "a"})]),
+            make_response(text="Sorry, search is unavailable."),
+        ]
+    )
     out = g.generate_response("Q", tools=TOOLS, tool_manager=tm)
     assert out == "Sorry, search is unavailable."
     reqs = requests_of(g)
@@ -129,9 +163,13 @@ def test_tool_exception_ends_loop_gracefully(gen, tm):
 
 def test_tool_exception_in_round_two(gen, tm):
     tm.execute_tool.side_effect = ["ok", RuntimeError("boom")]
-    g = gen([make_response(calls=[(OUTLINE, {"course_name": "X"})]),
-             make_response(calls=[(SEARCH, {"query": "a"})]),
-             make_response(text="partial answer")])
+    g = gen(
+        [
+            make_response(calls=[(OUTLINE, {"course_name": "X"})]),
+            make_response(calls=[(SEARCH, {"query": "a"})]),
+            make_response(text="partial answer"),
+        ]
+    )
     assert g.generate_response("Q", tools=TOOLS, tool_manager=tm) == "partial answer"
     reqs = requests_of(g)
     assert len(reqs) == 3 and is_text_only(reqs[2])
@@ -140,12 +178,20 @@ def test_tool_exception_in_round_two(gen, tm):
 
 def test_failure_in_one_parallel_call_still_answers_all(gen, tm):
     tm.execute_tool.side_effect = [RuntimeError("bad"), "fine"]
-    g = gen([make_response(calls=[(SEARCH, {"query": "a"}), (SEARCH, {"query": "b"})]),
-             make_response(text="answer")])
+    g = gen(
+        [
+            make_response(calls=[(SEARCH, {"query": "a"}), (SEARCH, {"query": "b"})]),
+            make_response(text="answer"),
+        ]
+    )
     assert g.generate_response("Q", tools=TOOLS, tool_manager=tm) == "answer"
     reqs = requests_of(g)
     parts = response_parts(reqs[1])
-    assert len(parts) == 2 and "error" in parts[0].response and parts[1].response == {"result": "fine"}
+    assert (
+        len(parts) == 2
+        and "error" in parts[0].response
+        and parts[1].response == {"result": "fine"}
+    )
     assert is_text_only(reqs[1])
 
 
@@ -156,9 +202,14 @@ def test_tool_call_with_none_args(gen, tm):
 
 
 def test_silent_model_after_tool_round_retries_then_falls_back(gen, tm):
-    g = gen([make_response(calls=[(SEARCH, {"query": "q"})]),
-             make_response(text=""),    # round-2 request: no calls, no text
-             make_response(text=""), make_response(text=None)])  # forced final + its retry
+    g = gen(
+        [
+            make_response(calls=[(SEARCH, {"query": "q"})]),
+            make_response(text=""),  # round-2 request: no calls, no text
+            make_response(text=""),
+            make_response(text=None),
+        ]
+    )  # forced final + its retry
     out = g.generate_response("Q", tools=TOOLS, tool_manager=tm)
     assert out.startswith("Sorry")
     assert len(requests_of(g)) == 4

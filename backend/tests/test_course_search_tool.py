@@ -20,12 +20,17 @@ def store():
 def test_happy_path_formats_and_tracks_sources(store):
     store.search.return_value = results(
         ["chunk a", "chunk b"],
-        [{"course_title": "C", "lesson_number": 1}, {"course_title": "C", "lesson_number": 1}],
+        [
+            {"course_title": "C", "lesson_number": 1},
+            {"course_title": "C", "lesson_number": 1},
+        ],
     )
     tool = CourseSearchTool(store)
     out = tool.execute(query="q")
     assert "[C - Lesson 1]\nchunk a" in out and "chunk b" in out
-    assert tool.last_sources == [{"text": "C - Lesson 1", "url": "https://x/lesson"}]  # deduped
+    assert tool.last_sources == [
+        {"text": "C - Lesson 1", "url": "https://x/lesson"}
+    ]  # deduped
 
 
 def test_args_forwarded(store):
@@ -36,7 +41,10 @@ def test_args_forwarded(store):
 
 def test_error_returned_verbatim(store):
     store.search.return_value = SearchResults.empty("No course found matching 'zzz'")
-    assert CourseSearchTool(store).execute(query="q", course_name="zzz") == "No course found matching 'zzz'"
+    assert (
+        CourseSearchTool(store).execute(query="q", course_name="zzz")
+        == "No course found matching 'zzz'"
+    )
 
 
 def test_empty_results_message_with_filters(store):
@@ -46,7 +54,9 @@ def test_empty_results_message_with_filters(store):
 
 
 def test_no_lesson_number_skips_link_lookup(store):
-    store.search.return_value = results(["d"], [{"course_title": "C", "lesson_number": None}])
+    store.search.return_value = results(
+        ["d"], [{"course_title": "C", "lesson_number": None}]
+    )
     tool = CourseSearchTool(store)
     out = tool.execute(query="q")
     assert out.startswith("[C]")
@@ -61,7 +71,9 @@ def test_tool_definition():
 
 
 def test_tool_manager_dispatch_and_sources(store):
-    store.search.return_value = results(["d"], [{"course_title": "C", "lesson_number": 0}])
+    store.search.return_value = results(
+        ["d"], [{"course_title": "C", "lesson_number": 0}]
+    )
     tm = ToolManager()
     tm.register_tool(CourseSearchTool(store))
     assert "d" in tm.execute_tool("search_course_content", query="q")
@@ -73,9 +85,11 @@ def test_tool_manager_dispatch_and_sources(store):
 
 # ---- integration against a real VectorStore ----
 
+
 @pytest.fixture
 def real_tool(test_config, docs_dir):
     from rag_system import RAGSystem
+
     rag = RAGSystem(test_config)
     courses, chunks = rag.add_course_folder(docs_dir)
     assert courses == 1 and chunks > 0
@@ -113,11 +127,21 @@ def test_sources_accumulate_across_searches_until_reset(store):
     tool = CourseSearchTool(store)
     tm = ToolManager()
     tm.register_tool(tool)
-    store.search.return_value = results(["a"], [{"course_title": "C1", "lesson_number": 1}])
+    store.search.return_value = results(
+        ["a"], [{"course_title": "C1", "lesson_number": 1}]
+    )
     tm.execute_tool("search_course_content", query="q1")
-    store.search.return_value = results(["b", "c"], [{"course_title": "C2", "lesson_number": 2},
-                                                     {"course_title": "C1", "lesson_number": 1}])
+    store.search.return_value = results(
+        ["b", "c"],
+        [
+            {"course_title": "C2", "lesson_number": 2},
+            {"course_title": "C1", "lesson_number": 1},
+        ],
+    )
     tm.execute_tool("search_course_content", query="q2")
-    assert [s["text"] for s in tm.get_last_sources()] == ["C1 - Lesson 1", "C2 - Lesson 2"]
+    assert [s["text"] for s in tm.get_last_sources()] == [
+        "C1 - Lesson 1",
+        "C2 - Lesson 2",
+    ]
     tm.reset_sources()
     assert tm.get_last_sources() == []

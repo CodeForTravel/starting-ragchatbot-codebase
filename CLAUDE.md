@@ -24,7 +24,14 @@ uv run python <script.py>
 
 The app requires a `GEMINI_API_KEY` in a `.env` file at the repo root (see `.env.example`).
 
-There is no test suite, linter, or type-checker configured in this repo currently.
+Code quality (black, configured in `pyproject.toml`):
+
+```bash
+./scripts/format.sh   # auto-format backend/ and main.py with black
+./scripts/check.sh    # black --check + pytest (skips the live smoke test)
+```
+
+Run `./scripts/format.sh` before committing. No linter or type-checker is configured.
 
 - Web interface: http://localhost:8000
 - API docs (FastAPI auto-generated): http://localhost:8000/docs
