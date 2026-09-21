@@ -8,7 +8,7 @@ class Tool(ABC):
     
     @abstractmethod
     def get_tool_definition(self) -> Dict[str, Any]:
-        """Return Anthropic tool definition for this tool"""
+        """Return tool definition (name, description, JSON-schema input_schema) for this tool"""
         pass
     
     @abstractmethod
@@ -25,7 +25,7 @@ class CourseSearchTool(Tool):
         self.last_sources = []  # Track sources from last search
     
     def get_tool_definition(self) -> Dict[str, Any]:
-        """Return Anthropic tool definition for this tool"""
+        """Return tool definition (name, description, JSON-schema input_schema) for this tool"""
         return {
             "name": "search_course_content",
             "description": "Search course materials with smart course name matching and lesson filtering",
@@ -88,8 +88,11 @@ class CourseSearchTool(Tool):
     def _format_results(self, results: SearchResults) -> str:
         """Format search results with course and lesson context"""
         formatted = []
-        sources = []  # Track sources for the UI
-        
+        # Sources for the UI as {"text", "url"} dicts; accumulate across searches within one
+        # query (reset_sources clears them per query) and dedupe against earlier searches
+        sources = list(self.last_sources)
+        seen = {s["text"] for s in sources}
+
         for doc, meta in zip(results.documents, results.metadata):
             course_title = meta.get('course_title', 'unknown')
             lesson_num = meta.get('lesson_number')
@@ -100,11 +103,15 @@ class CourseSearchTool(Tool):
                 header += f" - Lesson {lesson_num}"
             header += "]"
             
-            # Track source for the UI
-            source = course_title
+            # Track source for the UI (deduplicated; link kept out of the LLM-facing text)
+            source_text = course_title
+            source_url = None
             if lesson_num is not None:
-                source += f" - Lesson {lesson_num}"
-            sources.append(source)
+                source_text += f" - Lesson {lesson_num}"
+                source_url = self.store.get_lesson_link(course_title, lesson_num)
+            if source_text not in seen:
+                seen.add(source_text)
+                sources.append({"text": source_text, "url": source_url})
             
             formatted.append(f"{header}\n{doc}")
         
@@ -112,6 +119,46 @@ class CourseSearchTool(Tool):
         self.last_sources = sources
         
         return "\n\n".join(formatted)
+
+class CourseOutlineTool(Tool):
+    """Tool for retrieving a course's outline (title, link, lesson list) from the course catalog"""
+
+    def __init__(self, vector_store: VectorStore):
+        self.store = vector_store
+
+    def get_tool_definition(self) -> Dict[str, Any]:
+        """Return tool definition (name, description, JSON-schema input_schema) for this tool"""
+        return {
+            "name": "get_course_outline",
+            "description": "Get a course's outline: course title, course link, and the complete list of lessons (number and title)",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "course_name": {
+                        "type": "string",
+                        "description": "Course title (partial matches work, e.g. 'MCP', 'Introduction')"
+                    }
+                },
+                "required": ["course_name"]
+            }
+        }
+
+    def execute(self, course_name: str) -> str:
+        """Return the formatted outline for the best-matching course, or an error message"""
+        outline = self.store.get_course_outline(course_name)
+        if not outline:
+            return f"No course found matching '{course_name}'"
+
+        lessons = outline["lessons"]
+        lines = [
+            f"Course: {outline['title']}",
+            f"Link: {outline['course_link'] or 'N/A'}",
+            f"Lessons ({len(lessons)}):",
+        ]
+        for lesson in lessons:
+            lines.append(f"{lesson['lesson_number']}. {lesson['lesson_title']}")
+        return "\n".join(lines)
+
 
 class ToolManager:
     """Manages available tools for the AI"""
@@ -129,7 +176,7 @@ class ToolManager:
 
     
     def get_tool_definitions(self) -> list:
-        """Get all tool definitions for Anthropic tool calling"""
+        """Get all tool definitions for LLM tool calling"""
         return [tool.get_tool_definition() for tool in self.tools.values()]
     
     def execute_tool(self, tool_name: str, **kwargs) -> str:
